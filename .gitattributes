@@ -1,0 +1,44 @@
+# 1. Gestione Fine Riga (End of Line)
+# ----------------------------------
+# Forza tutti i file di testo a usare LF al momento del commit.
+# In fase di checkout, Git userà il formato nativo del sistema operativo se non specificato diversamente.
+* text=auto eol=lf
+
+# 2. File di Codice e Configurazione (Sempre LF)
+# ---------------------------------------------
+*.cs diff=csharp text eol=lf
+*.cginc text eol=lf
+*.shader text eol=lf
+*.mat text eol=lf
+*.anim text eol=lf
+*.asset text eol=lf
+*.unity text eol=lf
+*.prefab text eol=lf
+*.physicsMaterial2D text eol=lf
+*.physicsMaterial text eol=lf
+*.asset text eol=lf
+*.meta text eol=lf
+*.controller text eol=lf
+
+# 3. File Binari (Devono rimanere inalterati)
+# ------------------------------------------
+# L'attributo -text indica a Git di non toccare i fine riga.
+*.jpg binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.psd binary
+*.ai binary
+*.tga binary
+*.tiff binary
+*.fbx binary
+*.obj binary
+*.wav binary
+*.mp3 binary
+*.ogg binary
+*.dll binary
+*.exe binary
+*.pdf binary
+*.zip binary
+*.unitypackage binary
