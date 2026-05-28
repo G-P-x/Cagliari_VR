@@ -6,19 +6,29 @@ using UnityEngine.SceneManagement;
 
 
 
+[System.Serializable]
+public class Gaps
+{
+    public string gap_name;
+    public double utm_north;
+    public double utm_east;
+}
+
 public class SpawnManager : MonoBehaviour
 {
     public GameObject varcoObj;
     public GameObject city;
     public GameObject piazzaYenne_ref, bastione_ref;
     public GameObject crowdDensity; // an object to show the crowd density in the map by changing color 
+    [Header("Static gaps (Inspector)")]
+    public List<Gaps> staticGaps = new();
 
     // valori di riferimento per la scala
     private readonly float x_bastione = 4340750.584f;
     private readonly float z_bastione = 510059.186f;
     private readonly float x_piazzaYenne = 4340915.275f;
     private readonly float z_piazzaYenne = 509799.823f;
-    private float fattore_scala;
+    private float fattore_scala; // conversion factor to convert real world coordinates to Unity coordinates
     private readonly LogFormat logFormat = new();
     private Coroutine spawnCoroutine;
     private Dictionary<string, GameObject> varchi = new();
@@ -37,24 +47,40 @@ public class SpawnManager : MonoBehaviour
         float d_Unity = Distanza(new Vector2(x1, z1), new Vector2(x2, z2));
 
         fattore_scala = d_real / d_Unity;
-        // Database should be already downloaded
+        // Database should be already downloaded (fallback). Start spawning.
         spawnCoroutine = StartCoroutine(SpawnGaps()); // start the coroutine to spawn the gaps
     }
     private IEnumerator SpawnGaps()
     {
-        yield return new WaitForSeconds(1f); // wait for the Starts method to complete and the city to be loaded
+        // small delay to allow scene objects to initialize
+        yield return new WaitForSeconds(0.5f);
+
         if (varcoObj == null || city == null)
         {
             Debug.LogError($"{logFormat.databaseErrorLog} Il varco o la città non sono stati assegnati correttamente");
-            yield break; // if not, break the coroutine
+            yield break;
         }
-        if (!GetGapsFromDatabase()) // check if the gaps are available in the database
+
+        bool haveGaps = false;
+        // Prefer inspector static list when available
+        if (staticGaps != null && staticGaps.Count > 0)
         {
-            Debug.Log($"{logFormat.databaseErrorLog} Impossibile ottenere i varchi dal database");
-            yield break; // if not, break the coroutine
+            haveGaps = LoadGapsFromStaticList();
         }
-        yield return null; // wait for the next frame
-        StartCoroutine(LoadGaps()); // load the gaps into the scene
+
+        // Fallback to database if static list is empty
+        // if (!haveGaps)
+        // {
+        //     if (!GetGapsFromDatabase())
+        //     {
+        //         Debug.Log($"{logFormat.databaseErrorLog} Impossibile ottenere i varchi dal database o dalla lista statica");
+        //         yield break;
+        //     }
+        // }
+
+        // load the gaps into the scene
+        yield return null;
+        StartCoroutine(LoadGaps());
     }
     
     private bool GetGapsFromDatabase()
@@ -67,6 +93,21 @@ public class SpawnManager : MonoBehaviour
             return false;
         }
         return true;
+    }
+
+    private bool LoadGapsFromStaticList()
+    {
+        if (staticGaps == null || staticGaps.Count == 0) return false;
+        gaps.Clear();
+        foreach (Gaps gi in staticGaps)
+        {
+            var dict = new Dictionary<string, object>();
+            dict["gap_name"] = gi.gap_name ?? string.Empty;
+            dict["utm_north"] = gi.utm_north;
+            dict["utm_east"] = gi.utm_east;
+            gaps.Add(dict);
+        }
+        return gaps.Count > 0;
     }
 
     /// <summary>
@@ -96,13 +137,22 @@ public class SpawnManager : MonoBehaviour
             float x = (gap_x - x_bastione) / fattore_scala;
             float z = (gap_z - z_bastione) / fattore_scala;
             Vector3 posizione_varco = new(x, -0.05f, -z);
-            GameObject obj = Instantiate(varcoObj, varcoObj.transform.position, new Quaternion(0, 0, 0, 0));
-            obj.transform.parent = city.transform; // set the parent to the city object
-            // set the position and rotation of the varco to adjust for the parent object
-            Quaternion rotation = Quaternion.Euler(0, 0, 0);
-            obj.transform.SetLocalPositionAndRotation(posizione_varco, rotation); // final position and rotation with respect to the parent object
-            // the new varco is named after the gap name in the list and only if it exists
-            obj.name = gap["gap_name"].ToString().ToUpper();
+
+            // instantiate with identity and parented to city with local transform
+            GameObject obj = Instantiate(varcoObj, Vector3.zero, Quaternion.identity);
+            obj.transform.SetParent(city.transform, false);
+            obj.transform.localPosition = posizione_varco;
+            obj.transform.localRotation = Quaternion.identity;
+
+            // the new varco is named after the gap name
+            string gapName = gap["gap_name"].ToString().ToUpperInvariant();
+            obj.name = gapName;
+            if (varchi.ContainsKey(obj.name))
+            {
+                Debug.LogWarning($"{logFormat.databaseLog} Varco duplicato ignorato: {obj.name}");
+                Destroy(obj);
+                continue;
+            }
             varchi.Add(obj.name, obj); // add the new varco to the dictionary
             yield return null; // wait for the next frame to avoid freezing the main thread
         }
@@ -118,9 +168,8 @@ public class SpawnManager : MonoBehaviour
         if (varchi.Count == 0)
         {
             Debug.Log($"{logFormat.databaseErrorLog} Nessun varco trovato");
-            return null; // return an empty array if no gaps are found
         }
-        return varchi; // return the dictionary of gaps
+        return varchi; // return the dictionary of gaps (may be empty)
     }
 
     /* Utilities */

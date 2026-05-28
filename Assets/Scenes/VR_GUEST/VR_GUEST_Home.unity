@@ -6263,6 +6263,41 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 308438639555942094, guid: a27b491e55060ac43a36c2cbaa99b727,
         type: 3}
+    - target: {fileID: 5740478183865562634, guid: a1baa195a654d934e9f7188c401c5953,
+        type: 3}
+      propertyPath: staticGaps.Array.size
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 5740478183865562634, guid: a1baa195a654d934e9f7188c401c5953,
+        type: 3}
+      propertyPath: staticGaps.Array.data[0].gap_name
+      value: GAP1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5740478183865562634, guid: a1baa195a654d934e9f7188c401c5953,
+        type: 3}
+      propertyPath: staticGaps.Array.data[0].utm_east
+      value: 510062.98
+      objectReference: {fileID: 0}
+    - target: {fileID: 5740478183865562634, guid: a1baa195a654d934e9f7188c401c5953,
+        type: 3}
+      propertyPath: staticGaps.Array.data[1].gap_name
+      value: GAP2
+      objectReference: {fileID: 0}
+    - target: {fileID: 5740478183865562634, guid: a1baa195a654d934e9f7188c401c5953,
+        type: 3}
+      propertyPath: staticGaps.Array.data[1].utm_east
+      value: 509811.7
+      objectReference: {fileID: 0}
+    - target: {fileID: 5740478183865562634, guid: a1baa195a654d934e9f7188c401c5953,
+        type: 3}
+      propertyPath: staticGaps.Array.data[0].utm_north
+      value: 4340754.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 5740478183865562634, guid: a1baa195a654d934e9f7188c401c5953,
+        type: 3}
+      propertyPath: staticGaps.Array.data[1].utm_north
+      value: 4340941.81
+      objectReference: {fileID: 0}
     - target: {fileID: 6890318650300408399, guid: a1baa195a654d934e9f7188c401c5953,
         type: 3}
       propertyPath: m_Mesh
@@ -6283,6 +6318,11 @@ PrefabInstance:
       propertyPath: m_Mesh
       value: 
       objectReference: {fileID: 640970862}
+    - target: {fileID: 9127814100216177487, guid: a1baa195a654d934e9f7188c401c5953,
+        type: 3}
+      propertyPath: m_VersionIndex
+      value: 10156
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

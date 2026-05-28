@@ -6,7 +6,6 @@ TL;DR: Normalize gap/scene name casing, replace DB-only gap spawn with a static,
 1. Replace `GetGapsFromDatabase()` in `Assets/My_Scripts/MapManagement/SpawnManager.cs` with a static source loader:
    - Add a serializable `GapInfo` class (fields: `string gap_name`, `double utm_north`, `double utm_east`) and a public `List<GapInfo> staticGaps` on `SpawnManager` so gates can be edited in the Inspector.
    - Implement `LoadGapsFromStaticList()` that uses `staticGaps` instead of `DataUsage`.
-   - Keep a small helper to optionally load from `DataUsage` if present (runtime toggle).
    - Ensure spawned GameObject names are stored uppercased: `obj.name = gapName.ToUpper()`.
    - Use `Quaternion.identity` when instantiating and check for duplicate names before adding to `varchi`.
    - Change `GetGapInScene()` to return an empty dictionary instead of null when none found (or document the choice).
