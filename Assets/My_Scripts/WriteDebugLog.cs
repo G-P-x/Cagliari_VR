@@ -6,6 +6,7 @@ using UnityEngine.UI;
 public class WriteDebugLog : MonoBehaviour
 {
     public TextMeshProUGUI logText; // Assign this in the inspector
+    
     private string logMessages = "";
     public string stringFilter = "";
 
