@@ -29,7 +29,7 @@ public class ShowGapInfo : MonoBehaviour
     public GameObject arrow;
     private TextMeshProUGUI[] errorText;
     private SpawnHuman spawnHuman;
-    private DataUsage dataFromDb = new();
+    // private DataUsage dataFromDb = new();
     private InputFormat inputFormat = new();
     private CheckInput checkInput = new();
     private Dictionary<string, object> data = new();
@@ -72,7 +72,7 @@ public class ShowGapInfo : MonoBehaviour
             PrintError(title, message);
             return;
         }
-        data = dataFromDb.DataByTimeSlotAndDateRangeAndName(selectedTimeSlot, gapName, selectedDataArray[0], selectedDataArray[1]);
+        // data = dataFromDb.DataByTimeSlotAndDateRangeAndName(selectedTimeSlot, gapName, selectedDataArray[0], selectedDataArray[1]);
         if (data.Count == 0)
         {
             PrintError("", "Nessun dato trovato per il periodo selezionato");

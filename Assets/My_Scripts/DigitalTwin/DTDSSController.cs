@@ -1,11 +1,7 @@
 // =============================================================================
 // DTDSSController.cs — Controller VR DSS
-// My_Scripts/DigitalTwin/DTDSSController.cs
-//
-// PUSH  → riceve metriche real-time ogni 10s dal server (stato_varco,
-//         visitatori, visitatori_vr)
-// PULL  → su richiesta del decisore invia intervallo date e riceve
-//         media e errore_standard calcolati dal server
+// Usa polling diretto su DTWebSocketClient.LastMetriche in Update()
+// invece di sottoscrizione eventi — elimina il problema di OnDisable/OnEnable
 // =============================================================================
 
 using System;
@@ -17,51 +13,53 @@ using DigitalTwin;
 
 public class DTDSSController : MonoBehaviour
 {
-    // ─── Pannello PUSH — Metriche Real-Time ──────────────────────────────────
+    // ─── Metriche Real-Time ───────────────────────────────────────────────────
     [Header("Metriche Real-Time (PUSH)")]
     [SerializeField] private TextMeshProUGUI testoStatoVarco;
     [SerializeField] private TextMeshProUGUI testoVisitatori;
     [SerializeField] private TextMeshProUGUI testoVisitatoriVR;
 
-    // ─── Pannello PULL — Storico On-Demand ───────────────────────────────────
+    // ─── Pannello Storico ─────────────────────────────────────────────────────
     [Header("Pannello Storico (PULL on-demand)")]
-    [SerializeField] private GameObject     pannelloStorico;     // GameObject da mostrare/nascondere
-    [SerializeField] private TMP_InputField inputDataStart;      // YYYY-MM-DD
-    [SerializeField] private TMP_InputField inputDataEnd;        // YYYY-MM-DD
-    [SerializeField] private Button         btnRichiestaStorico;
-    [SerializeField] private TextMeshProUGUI testoMedia;         // risultato media
-    [SerializeField] private TextMeshProUGUI testoErroreStandard;// risultato errore_standard
-    [SerializeField] private TextMeshProUGUI testoCampioni;      // n giorni calcolati
-    [SerializeField] private TextMeshProUGUI testoStatoStorico;  // feedback / errori
+    [SerializeField] private GameObject      pannelloStorico;
+    [SerializeField] private TMP_InputField  inputDataStart;
+    [SerializeField] private TMP_InputField  inputDataEnd;
+    [SerializeField] private Button          btnRichiestaStorico;
+    [SerializeField] private TextMeshProUGUI testoMedia;
+    [SerializeField] private TextMeshProUGUI testoErroreStandard;
+    [SerializeField] private TextMeshProUGUI testoCampioni;
+    [SerializeField] private TextMeshProUGUI testoStatoStorico;
+    [SerializeField] private Button          btnToggleStorico;
 
-    // ─── Pannello PULL — Soglie di Controllo ────────────────────────────────
+    // ─── Pannello Soglie ──────────────────────────────────────────────────────
     [Header("Pannello Soglie di Controllo")]
-    [SerializeField] private GameObject     pannelloSoglie;
-    [SerializeField] private Slider         sliderSogliaIntermedia;
-    [SerializeField] private Slider         sliderSogliaLimite;
+    [SerializeField] private GameObject      pannelloSoglie;
+    [SerializeField] private Slider          sliderSogliaIntermedia;
+    [SerializeField] private Slider          sliderSogliaLimite;
     [SerializeField] private TextMeshProUGUI testoValoreIntermedia;
     [SerializeField] private TextMeshProUGUI testoValoreLimite;
-    [SerializeField] private Button         btnImpostaSoglie;
-    [SerializeField] private Button         btnToggleSoglie;
-
-    // ─── Pulsante toggle pannello storico ────────────────────────────────────
-    [Header("Toggle Storico")]
-    [SerializeField] private Button btnToggleStorico;
+    [SerializeField] private Button          btnImpostaSoglie;
+    [SerializeField] private Button          btnToggleSoglie;
 
     // ─── Colori ───────────────────────────────────────────────────────────────
     [Header("Colori")]
     [SerializeField] private Color coloreVarcoOk     = Color.green;
     [SerializeField] private Color coloreVarcoErrore = Color.red;
 
-    [Header("Debug")]
-    [SerializeField] private bool logMetriche = true;
-
+    // ─── Stato interno ────────────────────────────────────────────────────────
     private bool _storicoPanelVisible = false;
     private bool _sogliePanelVisible  = false;
 
+    // Riferimento all'ultima metrica mostrata — ReferenceEquals rileva ogni push
+    private DTMetricheDSSMsg _ultimaMetrica   = null;
+    private string           _ultimoStatoVarco = null;
+
     // ─── Unity Lifecycle ──────────────────────────────────────────────────────
-    private void OnEnable()
+    private void Start()
     {
+        pannelloStorico?.SetActive(false);
+        pannelloSoglie?.SetActive(false);
+
         btnRichiestaStorico?.onClick.AddListener(RichiestaStorico);
         btnToggleStorico?.onClick.AddListener(TogglePannelloStorico);
         btnImpostaSoglie?.onClick.AddListener(InviaSoglie);
@@ -69,23 +67,12 @@ public class DTDSSController : MonoBehaviour
         sliderSogliaIntermedia?.onValueChanged.AddListener(OnSliderIntermediaChanged);
         sliderSogliaLimite?.onValueChanged.AddListener(OnSliderLimiteChanged);
 
-        pannelloStorico?.SetActive(false);
-        pannelloSoglie?.SetActive(false);
-
+        // Rimane in ascolto per risposta storico
         if (DTWebSocketClient.Instance != null)
-        {
-            DTWebSocketClient.Instance.OnMetricheDSSReceived += HandleMetriche;
-            DTWebSocketClient.Instance.OnStatoVarcoReceived  += HandleStatoVarco;
-            DTWebSocketClient.Instance.OnStoricoDSSReceived  += HandleStorico;
-            DTWebSocketClient.Instance.OnConnected           += OnConnectedToServer;
-        }
-        else
-        {
-            StartCoroutine(AttesaClientDSS());
-        }
+            DTWebSocketClient.Instance.OnStoricoDSSReceived += HandleStorico;
     }
 
-    private void OnDisable()
+    private void OnDestroy()
     {
         btnRichiestaStorico?.onClick.RemoveListener(RichiestaStorico);
         btnToggleStorico?.onClick.RemoveListener(TogglePannelloStorico);
@@ -93,42 +80,39 @@ public class DTDSSController : MonoBehaviour
         btnToggleSoglie?.onClick.RemoveListener(TogglePannelloSoglie);
         sliderSogliaIntermedia?.onValueChanged.RemoveListener(OnSliderIntermediaChanged);
         sliderSogliaLimite?.onValueChanged.RemoveListener(OnSliderLimiteChanged);
-
         if (DTWebSocketClient.Instance != null)
-        {
-            DTWebSocketClient.Instance.OnMetricheDSSReceived -= HandleMetriche;
-            DTWebSocketClient.Instance.OnStatoVarcoReceived  -= HandleStatoVarco;
-            DTWebSocketClient.Instance.OnStoricoDSSReceived  -= HandleStorico;
-            DTWebSocketClient.Instance.OnConnected           -= OnConnectedToServer;
-        }
+            DTWebSocketClient.Instance.OnStoricoDSSReceived -= HandleStorico;
     }
 
-    private IEnumerator AttesaClientDSS()
+    // ─── Update — polling diretto (no eventi) ─────────────────────────────────
+    private void Update()
     {
-        float timeout = 10f;
-        while (DTWebSocketClient.Instance == null && timeout > 0f)
-        {
-            timeout -= Time.deltaTime;
-            yield return null;
-        }
         if (DTWebSocketClient.Instance == null)
         {
-            Debug.LogError("[DT DSS] DTWebSocketClient non trovato dopo 10s.");
-            yield break;
+            Debug.LogError("[DT DSS] DTWebSocketClient non trovato."); 
+            return;
         }
-        DTWebSocketClient.Instance.OnMetricheDSSReceived += HandleMetriche;
-        DTWebSocketClient.Instance.OnStatoVarcoReceived  += HandleStatoVarco;
-        DTWebSocketClient.Instance.OnStoricoDSSReceived  += HandleStorico;
-        DTWebSocketClient.Instance.OnConnected           += OnConnectedToServer;
+
+        // Aggiorna stato varco se cambiato
+        string statoVarco = DTWebSocketClient.Instance.LastStatoVarco;
+        if (statoVarco != null && statoVarco != _ultimoStatoVarco)
+        {
+            _ultimoStatoVarco = statoVarco;
+            AggiornaStatoVarco(statoVarco);
+        }
+
+        // Aggiorna metriche ad ogni nuovo push (confronto riferimento oggetto)
+        // JsonUtility.FromJson crea sempre un nuovo oggetto → ogni push è rilevato
+        DTMetricheDSSMsg m = DTWebSocketClient.Instance.LastMetriche;
+        if (m != null && !ReferenceEquals(m, _ultimaMetrica))
+        {
+            _ultimaMetrica = m;
+            AggiornaUI(m);
+        }
     }
 
-    // ─── Handlers PUSH ────────────────────────────────────────────────────────
-    private void OnConnectedToServer()
-    {
-        Debug.Log("[DT DSS] Connesso — in attesa PUSH dal server.");
-    }
-
-    private void HandleStatoVarco(string statoVarco)
+    // ─── Aggiornamento UI ─────────────────────────────────────────────────────
+    private void AggiornaStatoVarco(string statoVarco)
     {
         bool ok = statoVarco == DTStati.VARCO_OK;
         if (testoStatoVarco != null)
@@ -138,23 +122,15 @@ public class DTDSSController : MonoBehaviour
         }
     }
 
-    private void HandleMetriche(DTMetricheDSSMsg m)
+    private void AggiornaUI(DTMetricheDSSMsg m)
     {
-        if (logMetriche)
-            Debug.Log($"[DT DSS] visitatori={m.visitatori} visitatori_vr={m.visitatori_vr} stato={m.stato_varco}");
-
-        bool ok = m.stato_varco == DTStati.VARCO_OK;
-        if (testoStatoVarco != null)
-        {
-            testoStatoVarco.text  = ok ? "✓ OPERATIVO" : "⚠ FUORI SERVIZIO";
-            testoStatoVarco.color = ok ? coloreVarcoOk : coloreVarcoErrore;
-        }
-
+        AggiornaStatoVarco(m.stato_varco);
         if (testoVisitatori   != null) testoVisitatori.text   = $"{m.visitatori}";
         if (testoVisitatoriVR != null) testoVisitatoriVR.text = $"{m.visitatori_vr}";
+        Debug.Log($"[DT DSS] UI aggiornata: visitatori={m.visitatori} vr={m.visitatori_vr}");
     }
 
-    // ─── Handler PULL Storico ─────────────────────────────────────────────────
+    // ─── Handler storico (evento — risposta one-shot) ─────────────────────────
     private void HandleStorico(DTStoricoResponseMsg s)
     {
         if (!string.IsNullOrEmpty(s.errore))
@@ -166,7 +142,6 @@ public class DTDSSController : MonoBehaviour
             }
             return;
         }
-
         if (testoMedia          != null) testoMedia.text          = $"{s.media:F2}";
         if (testoErroreStandard != null) testoErroreStandard.text = $"{s.errore_standard:F2}";
         if (testoCampioni       != null) testoCampioni.text       = $"{s.campioni} giorni";
@@ -175,109 +150,62 @@ public class DTDSSController : MonoBehaviour
             testoStatoStorico.text  = $"✓ {s.data_start} → {s.data_end}";
             testoStatoStorico.color = coloreVarcoOk;
         }
-
-        Debug.Log($"[DT DSS] Storico ricevuto | media={s.media} errore_standard={s.errore_standard} campioni={s.campioni}");
     }
 
-    // ─── API pubblica ─────────────────────────────────────────────────────────
-
-    // ─── Callbacks slider soglie ─────────────────────────────────────────────
+    // ─── Slider callbacks ─────────────────────────────────────────────────────
     private void OnSliderIntermediaChanged(float val)
-    {
-        if (testoValoreIntermedia != null) testoValoreIntermedia.text = $"{(int)val}";
-    }
+    { if (testoValoreIntermedia != null) testoValoreIntermedia.text = $"{(int)val}"; }
 
     private void OnSliderLimiteChanged(float val)
-    {
-        if (testoValoreLimite != null) testoValoreLimite.text = $"{(int)val}";
-    }
+    { if (testoValoreLimite != null) testoValoreLimite.text = $"{(int)val}"; }
 
-    // ─── API Soglie ───────────────────────────────────────────────────────────
-
-    /// <summary>Toggle visibilità pannello soglie di controllo.</summary>
-    public void TogglePannelloSoglie()
-    {
-        _sogliePanelVisible = !_sogliePanelVisible;
-        pannelloSoglie?.SetActive(_sogliePanelVisible);
-    }
-
-    /// <summary>
-    /// Legge i valori dagli slider e invia le soglie al server.
-    /// Payload: { "soglia_ingressi_intermedia": int, "soglia_ingressi_limite": int }
-    /// </summary>
-    public void InviaSoglie()
-    {
-        if (DTWebSocketClient.Instance == null || !DTWebSocketClient.Instance.IsConnected)
-        {
-            Debug.LogWarning("[DT DSS] InviaSoglie: non connesso.");
-            return;
-        }
-
-        int intermedia = sliderSogliaIntermedia != null ? (int)sliderSogliaIntermedia.value : 5;
-        int limite     = sliderSogliaLimite     != null ? (int)sliderSogliaLimite.value     : 10;
-
-        if (limite <= intermedia)
-        {
-            Debug.LogWarning($"[DT DSS] Soglia limite ({limite}) deve essere > intermedia ({intermedia}).");
-            limite = intermedia + 1;
-            if (sliderSogliaLimite != null) sliderSogliaLimite.value = limite;
-        }
-
-        var msg = new DTSoglieMsg
-        {
-            soglia_ingressi_intermedia = intermedia,
-            soglia_ingressi_limite     = limite
-        };
-
-        DTWebSocketClient.Instance.SendJson(msg);
-        Debug.Log($"[DT DSS] Soglie inviate → intermedia={intermedia}, limite={limite}");
-    }
-
-    /// <summary>Toggle visibilità pannello storico.</summary>
+    // ─── API pubblica ─────────────────────────────────────────────────────────
     public void TogglePannelloStorico()
     {
         _storicoPanelVisible = !_storicoPanelVisible;
         pannelloStorico?.SetActive(_storicoPanelVisible);
     }
 
-    /// <summary>
-    /// Invia richiesta PULL storico al server con l'intervallo date inserito
-    /// dal decisore nei campi inputDataStart e inputDataEnd.
-    /// </summary>
+    public void TogglePannelloSoglie()
+    {
+        _sogliePanelVisible = !_sogliePanelVisible;
+        pannelloSoglie?.SetActive(_sogliePanelVisible);
+    }
+
     public void RichiestaStorico()
     {
         if (DTWebSocketClient.Instance == null || !DTWebSocketClient.Instance.IsConnected)
-        {
-            Debug.LogWarning("[DT DSS] RichiestaStorico: non connesso.");
-            return;
-        }
+        { Debug.LogWarning("[DT DSS] Non connesso."); return; }
 
-        string dataStart = inputDataStart?.text?.Trim();
-        string dataEnd   = inputDataEnd?.text?.Trim();
+        string start = inputDataStart?.text?.Trim();
+        string end   = inputDataEnd?.text?.Trim();
 
-        if (string.IsNullOrEmpty(dataStart) || string.IsNullOrEmpty(dataEnd))
+        if (string.IsNullOrEmpty(start) || string.IsNullOrEmpty(end))
         {
             if (testoStatoStorico != null)
-            {
-                testoStatoStorico.text  = "⚠ Inserisci data_start e data_end";
-                testoStatoStorico.color = coloreVarcoErrore;
-            }
+            { testoStatoStorico.text = "⚠ Inserisci data_start e data_end"; testoStatoStorico.color = coloreVarcoErrore; }
             return;
         }
-
         if (testoStatoStorico != null)
-        {
-            testoStatoStorico.text  = "⏳ Richiesta in corso...";
-            testoStatoStorico.color = Color.yellow;
-        }
+        { testoStatoStorico.text = "⏳ Richiesta in corso..."; testoStatoStorico.color = Color.yellow; }
 
-        var msg = new DTStoricoRequestMsg
-        {
-            data_start = dataStart,
-            data_end   = dataEnd
-        };
+        DTWebSocketClient.Instance.SendJson(new DTStoricoRequestMsg { data_start = start, data_end = end });
+    }
 
-        DTWebSocketClient.Instance.SendJson(msg);
-        Debug.Log($"[DT DSS] Richiesta storico: {dataStart} → {dataEnd}");
+    public void InviaSoglie()
+    {
+        if (DTWebSocketClient.Instance == null || !DTWebSocketClient.Instance.IsConnected)
+        { Debug.LogWarning("[DT DSS] Non connesso."); return; }
+
+        int intermedia = sliderSogliaIntermedia != null ? (int)sliderSogliaIntermedia.value : 5;
+        int limite     = sliderSogliaLimite     != null ? (int)sliderSogliaLimite.value     : 10;
+        if (limite <= intermedia) limite = intermedia + 1;
+
+        DTWebSocketClient.Instance.SendJson(new DTSoglieMsg
+        {
+            soglia_ingressi_intermedia = intermedia,
+            soglia_ingressi_limite     = limite
+        });
+        Debug.Log($"[DT DSS] Soglie → intermedia={intermedia}, limite={limite}");
     }
 }

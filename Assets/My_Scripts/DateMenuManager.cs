@@ -30,7 +30,7 @@ public class DateMenuManager : MonoBehaviour
 
     [Tooltip("Text components to display the minimum and maximum average accesses in the gaps related to the color map. 0: min, 1: max")]
     public TextMeshProUGUI[] textBar; // Text component to display the minimum and maximum average accesses in the gaps related to the color map
-    private DataUsage dataFromDb = new();
+    // private DataUsage dataFromDb = new();
     private InputFormat inputFormat = new(); // Instance of InputFormat to handle date formatting
 
     /// <summary>
@@ -143,7 +143,11 @@ public class DateMenuManager : MonoBehaviour
         Debug.Log($"[A] Retrieving data for {gaps.Count} gaps from {dates[0]} to {dates[1]}"); // Log the number of gaps and the date range being processed
         foreach (var gap in gaps)
         {
-            var gapData = dataFromDb.GetGapAverageAffluenceInDateRange(gap.Key, dates[0], dates[1]); // Retrieve data for each gap by name and date range
+            // var gapData = dataFromDb.GetGapAverageAffluenceInDateRange(gap.Key, dates[0], dates[1]); // Retrieve data for each gap by name and date range
+            var gapData = new Dictionary<string, object>
+            {
+                { "average_accesses", 100 }
+            };
             gapsData.Add(gapData); // Add the retrieved data to the list
             if (gapData == null || !gapData.ContainsKey("gap_name"))
             {

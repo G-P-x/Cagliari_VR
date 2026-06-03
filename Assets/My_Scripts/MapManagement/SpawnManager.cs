@@ -83,18 +83,6 @@ public class SpawnManager : MonoBehaviour
         StartCoroutine(LoadGaps());
     }
     
-    private bool GetGapsFromDatabase()
-    {
-        DataUsage dataUsage = new();
-        gaps = dataUsage.GetAllGapsWithLocation();
-        if (gaps.Count == 0)
-        {
-            Debug.Log($"{logFormat.databaseErrorLog} Il database non contiene varchi");
-            return false;
-        }
-        return true;
-    }
-
     private bool LoadGapsFromStaticList()
     {
         if (staticGaps == null || staticGaps.Count == 0) return false;
