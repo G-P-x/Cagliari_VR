@@ -54,15 +54,45 @@ public class DTGuestController : MonoBehaviour
     // ─── Unity Lifecycle ──────────────────────────────────────────────────────
     private void OnEnable()
     {
-        // Iscriviti all'evento del WebSocket Client (se già inizializzato)
         if (DTWebSocketClient.Instance != null)
         {
             DTWebSocketClient.Instance.OnStatoVarcoReceived += HandleStatoVarco;
             DTWebSocketClient.Instance.OnConnected += HandleConnected;
+
+            // Se già connesso invia subito, altrimenti aspetta HandleConnected
+            if (DTWebSocketClient.Instance.IsConnected)
+                InviaEventoVR(ingresso: true);
+            // else: HandleConnected() lo farà appena la connessione è pronta
+        }
+        else
+        {
+            // DTWebSocketClient non ancora in scena — riprova al frame successivo
+            StartCoroutine(AttesaClient());
+        }
+    }
+
+    private System.Collections.IEnumerator AttesaClient()
+    {
+        // Aspetta finché il Singleton è disponibile (max 10 secondi)
+        float timeout = 10f;
+        while (DTWebSocketClient.Instance == null && timeout > 0f)
+        {
+            timeout -= Time.deltaTime;
+            yield return null;
         }
 
-        // Invia evento ingresso VR
-        InviaEventoVR(ingresso: true);
+        if (DTWebSocketClient.Instance == null)
+        {
+            Debug.LogError("[DT Guest] DTWebSocketClient non trovato in scena dopo 10s. " +
+                           "Assicurati che sia presente nella Home scene.");
+            yield break;
+        }
+
+        DTWebSocketClient.Instance.OnStatoVarcoReceived += HandleStatoVarco;
+        DTWebSocketClient.Instance.OnConnected += HandleConnected;
+
+        if (DTWebSocketClient.Instance.IsConnected)
+            InviaEventoVR(ingresso: true);
     }
 
     private void OnDisable()

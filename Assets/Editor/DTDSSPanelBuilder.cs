@@ -1,6 +1,12 @@
 // =============================================================================
-// DTDSSPanelBuilder.cs — Editor Script pannello VR DSS con Meta Interaction SDK
+// DTDSSPanelBuilder.cs — Pannello VR DSS
 // Assets/Editor/DTDSSPanelBuilder.cs
+// Menu: DigitalTwin → Crea Pannello DSS
+//
+// Layout:
+//   • Pannello principale: metriche PUSH (stato_varco, visitatori, visitatori_vr)
+//   • Pulsante toggle "STORICO"
+//   • Pannello storico (nascosto di default): input date + risultati PULL
 // =============================================================================
 
 #if UNITY_EDITOR
@@ -13,91 +19,135 @@ using DigitalTwin;
 
 public class DTDSSPanelBuilder : Editor
 {
-    private static readonly Color ColoreHeader     = new Color(0.10f, 0.13f, 0.20f, 1f);
-    private static readonly Color ColoreSezione    = new Color(0.14f, 0.18f, 0.27f, 1f);
-    private static readonly Color ColoreAccent     = new Color(0.22f, 0.60f, 0.95f, 1f);
-    private static readonly Color ColoreBottone    = new Color(0.20f, 0.55f, 0.30f, 1f);
-    private static readonly Color ColoreBottonePoll= new Color(0.25f, 0.40f, 0.70f, 1f);
-    private static readonly Color ColoreSliderFill = new Color(0.22f, 0.60f, 0.95f, 1f);
-    private static readonly Color ColoreTesto      = new Color(0.90f, 0.93f, 1.00f, 1f);
-    private static readonly Color ColoreTestoLabel = new Color(0.65f, 0.72f, 0.88f, 1f);
-    private static readonly Color ColoreSliderLim  = new Color(0.95f, 0.35f, 0.35f, 1f);
+    // ─── Palette ─────────────────────────────────────────────────────────────
+    private static readonly Color ColoreHeader      = new Color(0.10f, 0.13f, 0.20f, 1f);
+    private static readonly Color ColoreSezione     = new Color(0.14f, 0.18f, 0.27f, 1f);
+    private static readonly Color ColoreAccent      = new Color(0.22f, 0.60f, 0.95f, 1f);
+    private static readonly Color ColoreVerde       = new Color(0.20f, 0.80f, 0.40f, 1f);
+    private static readonly Color ColoreTesto       = new Color(0.90f, 0.93f, 1.00f, 1f);
+    private static readonly Color ColoreTestoLabel  = new Color(0.65f, 0.72f, 0.88f, 1f);
+    private static readonly Color ColoreBottoneOk   = new Color(0.20f, 0.55f, 0.30f, 1f);
+    private static readonly Color ColoreBottoneInfo = new Color(0.25f, 0.40f, 0.70f, 1f);
+    private static readonly Color ColoreStorico     = new Color(0.18f, 0.22f, 0.35f, 1f);
+    private static readonly Color ColoreInput       = new Color(0.08f, 0.10f, 0.18f, 1f);
 
     [MenuItem("DigitalTwin/Crea Pannello DSS")]
     public static void CreaPannelloDSS()
     {
         DTConfig dtConfig = TrovaDTConfig();
 
+        // ── Radice pannello ───────────────────────────────────────────────────
         GameObject radice = new GameObject("DT_DSS_Panel");
         Undo.RegisterCreatedObjectUndo(radice, "Crea Pannello DSS");
 
         Canvas canvas = radice.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.WorldSpace;
-        CanvasScaler scaler = radice.AddComponent<CanvasScaler>();
-        scaler.dynamicPixelsPerUnit = 10f;
+        radice.AddComponent<CanvasScaler>().dynamicPixelsPerUnit = 10f;
         radice.AddComponent<OVRRaycaster>();
 
-        RectTransform rtCanvas = radice.GetComponent<RectTransform>();
-        rtCanvas.sizeDelta  = new Vector2(600, 860);
-        rtCanvas.localScale = Vector3.one * 0.003f;
-        radice.transform.position = new Vector3(0f, 1.5f, 2f);
+        RectTransform rt = radice.GetComponent<RectTransform>();
+        rt.sizeDelta  = new Vector2(560, 700);
+        rt.localScale = Vector3.one * 0.003f;
+        radice.transform.position = new Vector3(0f, 1.6f, 2f);
 
         GarantisciOVREventSystem();
+        CreaBox(radice, "Sfondo", ColoreHeader, new Vector2(560, 700), Vector2.zero);
 
-        // Sfondo
-        CreaBox(radice, "Sfondo", ColoreHeader, new Vector2(600, 860), Vector2.zero);
+        // ── Header ────────────────────────────────────────────────────────────
+        GameObject header = CreaBox(radice, "Header",
+            new Color(0.08f,0.10f,0.17f), new Vector2(560,64), new Vector2(0, 318));
+        CreaTesto(header, "Titolo",      "DIGITAL TWIN — VR DSS",        20, ColoreTesto,  new Vector2(0, 8), FontStyles.Bold);
+        CreaTesto(header, "Sottotitolo", "Cagliari Smart Access Control", 9,  ColoreAccent, new Vector2(0,-16));
 
-        // Header
-        GameObject header = CreaBox(radice, "Header", new Color(0.08f, 0.10f, 0.17f), new Vector2(600, 72), new Vector2(0, 394));
-        CreaTesto(header, "Titolo", "DIGITAL TWIN — VR DSS", 22, ColoreTesto, new Vector2(0, 8), FontStyles.Bold);
-        CreaTesto(header, "Sottotitolo", "Cagliari Smart Access Control", 10, ColoreAccent, new Vector2(0, -16));
+        // ── Stato Varco ───────────────────────────────────────────────────────
+        float y = 228f;
+        CreaLabel(radice, "LblStato", "STATO VARCO", y + 22);
+        GameObject boxStato = CreaBox(radice, "BoxStato", ColoreSezione, new Vector2(520,48), new Vector2(0,y));
+        TextMeshProUGUI testoStatoVarco = CreaTesto(boxStato, "TestoStatoVarco",
+            "— IN ATTESA —", 16, ColoreTesto, Vector2.zero, FontStyles.Bold);
 
-        // Stato Varco
-        float y = 300f;
-        CreaLabel(radice, "LblStatoVarco", "STATO VARCO", y + 24);
-        GameObject boxStato = CreaBox(radice, "BoxStatoVarco", ColoreSezione, new Vector2(560, 60), new Vector2(0, y));
-        TextMeshProUGUI testoStatoVarco = CreaTesto(boxStato, "TestoStatoVarco", "— IN ATTESA —", 18, ColoreTesto, Vector2.zero, FontStyles.Bold);
+        // ── Visitatori ────────────────────────────────────────────────────────
+        y = 140f;
+        CreaLabel(radice, "LblVis", "VISITATORI  —  REAL TIME", y + 38);
+        GameObject boxVis = CreaBox(radice, "BoxVisitatori", ColoreSezione, new Vector2(520,80), new Vector2(0,y));
+        TextMeshProUGUI testoVisitatori   = CreaRigaKV(boxVis, "RigaFisici", "Presenti nel sito ora:", "—", new Vector2(0, 20), ColoreVerde);
+        TextMeshProUGUI testoVisitatoriVR = CreaRigaKV(boxVis, "RigaVR",     "Presenti in VR ora:",   "—", new Vector2(0,-20), ColoreAccent);
 
-        // Visitatori
-        y = 195f;
-        CreaLabel(radice, "LblVisitatori", "VISITATORI", y + 40);
-        GameObject boxVis = CreaBox(radice, "BoxVisitatori", ColoreSezione, new Vector2(560, 84), new Vector2(0, y));
-        TextMeshProUGUI testoVisitatori   = CreaRigaKV(boxVis, "RigaFisici", "Fisici (varco):", "—", new Vector2(0, 18));
-        TextMeshProUGUI testoVisitatoriVR = CreaRigaKV(boxVis, "RigaVR",     "Virtuali (VR):", "—", new Vector2(0, -18));
+        // ── Toggle storico ────────────────────────────────────────────────────
+        y = 40f;
+        Button btnToggle = CreaBottone(radice, "BtnToggleStorico",
+            "▼  STORICO  ON-DEMAND", ColoreBottoneInfo, new Vector2(0, y), new Vector2(520, 44));
 
-        // Metriche
-        y = 80f;
-        CreaLabel(radice, "LblMetriche", "METRICHE STATISTICHE", y + 40);
-        GameObject boxMet = CreaBox(radice, "BoxMetriche", ColoreSezione, new Vector2(560, 84), new Vector2(0, y));
-        TextMeshProUGUI testoMedia = CreaRigaKV(boxMet, "RigaMedia", "Media ingressi/giorno:", "—", new Vector2(0, 18));
-        TextMeshProUGUI testoStd   = CreaRigaKV(boxMet, "RigaStd",   "Deviazione standard:",  "—", new Vector2(0, -18));
+        // ── Pannello Storico (nascosto di default) ────────────────────────────
+        y = -140f;
+        GameObject pannelloStorico = CreaBox(radice, "PannelloStorico",
+            ColoreStorico, new Vector2(520, 300), new Vector2(0, y));
+        pannelloStorico.SetActive(false);  // nascosto di default
 
-        // Soglia Intermedia
-        y = -55f;
-        CreaLabel(radice, "LblSogliaInt", "SOGLIA INTERMEDIA  ●  LED GIALLO", y + 55);
-        GameObject boxInt = CreaBox(radice, "BoxSogliaInt", ColoreSezione, new Vector2(560, 110), new Vector2(0, y));
-        TextMeshProUGUI testoSogliaInt = CreaTesto(boxInt, "ValoreInt", "5", 28, ColoreAccent, new Vector2(230, 0), FontStyles.Bold);
-        Slider sliderInt = CreaSlider(boxInt, "SliderIntermedia", 1, 100, 5, ColoreSliderFill, new Vector2(-25, 0), 440);
+        CreaLabel(pannelloStorico, "LblIntervallo", "INTERVALLO DATE  (formato YYYY-MM-DD)", 130);
 
-        // Soglia Limite
-        y = -195f;
-        CreaLabel(radice, "LblSogliaLim", "SOGLIA LIMITE  ●  LED ROSSO", y + 55);
-        GameObject boxLim = CreaBox(radice, "BoxSogliaLim", ColoreSezione, new Vector2(560, 110), new Vector2(0, y));
-        TextMeshProUGUI testoSogliaLim = CreaTesto(boxLim, "ValoreLim", "10", 28, ColoreSliderLim, new Vector2(230, 0), FontStyles.Bold);
-        Slider sliderLim = CreaSlider(boxLim, "SliderLimite", 1, 100, 10, ColoreSliderLim, new Vector2(-25, 0), 440);
+        // Input Data Start
+        TMP_InputField inputStart = CreaInputField(pannelloStorico, "InputDataStart",
+            "Data inizio (es. 2026-05-29)", new Vector2(0, 90));
 
-        // Pulsanti
-        y = -335f;
-        GameObject boxBtn = CreaBox(radice, "BoxBottoni", new Color(0.08f, 0.10f, 0.16f), new Vector2(560, 72), new Vector2(0, y));
-        Button btnSoglie = CreaBottone(boxBtn, "BtnInviaSoglie", "APPLICA SOGLIE",   ColoreBottone,    new Vector2(-145, 0), new Vector2(250, 52));
-        Button btnPoll   = CreaBottone(boxBtn, "BtnAggiorna",    "AGGIORNA DATI",    ColoreBottonePoll, new Vector2(145, 0), new Vector2(250, 52));
+        // Input Data End
+        TMP_InputField inputEnd = CreaInputField(pannelloStorico, "InputDataEnd",
+            "Data fine (es. 2026-05-30)", new Vector2(0, 50));
 
-        // Barra connessione
-        y = -408f;
-        GameObject barraConn = CreaBox(radice, "BarraConnessione", new Color(0.10f, 0.14f, 0.22f), new Vector2(560, 28), new Vector2(0, y));
-        CreaTesto(barraConn, "TestoConn", "⬤  Connessione al Digital Twin Server in corso...", 9, ColoreTestoLabel, Vector2.zero);
+        // Pulsante richiesta
+        Button btnStorico = CreaBottone(pannelloStorico, "BtnRichiestaStorico",
+            "CALCOLA STORICO", ColoreBottoneOk, new Vector2(0, 10), new Vector2(300, 40));
 
-        // DigitalTwinManager
+        // Risultati
+        CreaLabel(pannelloStorico, "LblRisultati", "RISULTATI", -30);
+        TextMeshProUGUI testoMedia          = CreaRigaKV(pannelloStorico, "RigaMedia",    "Media pesata giornaliera:", "—", new Vector2(0, -60), ColoreTesto);
+        TextMeshProUGUI testoErroreStandard = CreaRigaKV(pannelloStorico, "RigaErrore",   "Errore standard:",          "—", new Vector2(0, -85), ColoreTesto);
+        TextMeshProUGUI testoCampioni       = CreaRigaKV(pannelloStorico, "RigaCampioni", "Campioni (giorni):",        "—", new Vector2(0,-110), ColoreTestoLabel);
+
+        // Stato / feedback
+        GameObject boxStato2 = CreaBox(pannelloStorico, "BoxStatoStorico",
+            new Color(0.08f,0.10f,0.18f), new Vector2(500, 28), new Vector2(0,-138));
+        TextMeshProUGUI testoStatoStorico = CreaTesto(boxStato2, "TestoStatoStorico",
+            "Inserisci le date e premi CALCOLA", 9, ColoreTestoLabel, Vector2.zero);
+
+        // ── Toggle soglie ─────────────────────────────────────────────────────
+        Button btnToggleSoglie = CreaBottone(radice, "BtnToggleSoglie",
+            "▼  SOGLIE DI CONTROLLO",
+            new Color(0.30f, 0.20f, 0.55f), new Vector2(0, -40f), new Vector2(520, 44));
+
+        // ── Pannello Soglie (nascosto di default) ─────────────────────────────
+        GameObject pannelloSoglie = CreaBox(radice, "PannelloSoglie",
+            new Color(0.16f, 0.12f, 0.28f), new Vector2(520, 240), new Vector2(0, -210f));
+        pannelloSoglie.SetActive(false);
+
+        CreaLabel(pannelloSoglie, "LblSoglieTitle", "IMPOSTA SOGLIE SEMAFORO", 100);
+
+        // Slider soglia intermedia
+        CreaLabel(pannelloSoglie, "LblInt", "SOGLIA INTERMEDIA  ●  LED GIALLO", 68);
+        TextMeshProUGUI testoValInt = CreaTesto(pannelloSoglie, "ValoreInt",
+            "5", 20, new Color(0.95f, 0.75f, 0.10f), new Vector2(215, 40), FontStyles.Bold);
+        Slider sliderInt = CreaSlider(pannelloSoglie, "SliderIntermedia",
+            1, 500, 5, new Color(0.95f, 0.75f, 0.10f), new Vector2(-20, 40), 380);
+
+        // Slider soglia limite
+        CreaLabel(pannelloSoglie, "LblLim", "SOGLIA LIMITE  ●  LED ROSSO", -12);
+        TextMeshProUGUI testoValLim = CreaTesto(pannelloSoglie, "ValoreLim",
+            "10", 20, new Color(0.95f, 0.35f, 0.35f), new Vector2(215, -38), FontStyles.Bold);
+        Slider sliderLim = CreaSlider(pannelloSoglie, "SliderLimite",
+            1, 500, 10, new Color(0.95f, 0.35f, 0.35f), new Vector2(-20, -38), 380);
+
+        // Pulsante imposta soglie
+        Button btnImpostaSoglie = CreaBottone(pannelloSoglie, "BtnImpostaSoglie",
+            "IMPOSTA SOGLIE", new Color(0.55f, 0.20f, 0.55f),
+            new Vector2(0, -95), new Vector2(300, 42));
+
+        // ── Barra connessione ─────────────────────────────────────────────────
+        GameObject barraConn = CreaBox(radice, "BarraConn",
+            new Color(0.10f,0.14f,0.22f), new Vector2(520,24), new Vector2(0,-326));
+        CreaTesto(barraConn, "TestoConn",
+            "⬤  Connessione al Digital Twin Server in corso...", 8, ColoreTestoLabel, Vector2.zero);
+
+        // ── DigitalTwinManager ────────────────────────────────────────────────
         GameObject dtManager = new GameObject("DigitalTwinManager");
         dtManager.transform.SetParent(radice.transform, false);
         DTWebSocketClient wsClient = dtManager.AddComponent<DTWebSocketClient>();
@@ -105,50 +155,59 @@ public class DTDSSPanelBuilder : Editor
         {
             SerializedObject soWS = new SerializedObject(wsClient);
             soWS.FindProperty("dtConfig").objectReferenceValue = dtConfig;
-            soWS.FindProperty("clientType").enumValueIndex = 1;
+            soWS.FindProperty("clientType").enumValueIndex = 1; // VRDSS
             soWS.ApplyModifiedProperties();
         }
 
-        // DTDSSController — tutti i riferimenti cablati
+        // ── DTDSSController — riferimenti cablati ─────────────────────────────
         DTDSSController dssCtrl = radice.AddComponent<DTDSSController>();
         SerializedObject soDSS  = new SerializedObject(dssCtrl);
-        soDSS.FindProperty("testoStatoVarco").objectReferenceValue         = testoStatoVarco;
-        soDSS.FindProperty("testoVisitatori").objectReferenceValue         = testoVisitatori;
-        soDSS.FindProperty("testoVisitatoriVR").objectReferenceValue       = testoVisitatoriVR;
-        soDSS.FindProperty("testoMediaIngressi").objectReferenceValue      = testoMedia;
-        soDSS.FindProperty("testoDeviazioneStandard").objectReferenceValue = testoStd;
-        soDSS.FindProperty("sliderSogliaIntermedia").objectReferenceValue  = sliderInt;
-        soDSS.FindProperty("sliderSogliaLimite").objectReferenceValue      = sliderLim;
-        soDSS.FindProperty("testoSogliaIntermedia").objectReferenceValue   = testoSogliaInt;
-        soDSS.FindProperty("testoSogliaLimite").objectReferenceValue       = testoSogliaLim;
-        soDSS.FindProperty("btnInviaSoglie").objectReferenceValue          = btnSoglie;
+
+        soDSS.FindProperty("testoStatoVarco").objectReferenceValue      = testoStatoVarco;
+        soDSS.FindProperty("testoVisitatori").objectReferenceValue      = testoVisitatori;
+        soDSS.FindProperty("testoVisitatoriVR").objectReferenceValue    = testoVisitatoriVR;
+        soDSS.FindProperty("pannelloStorico").objectReferenceValue      = pannelloStorico;
+        soDSS.FindProperty("inputDataStart").objectReferenceValue       = inputStart;
+        soDSS.FindProperty("inputDataEnd").objectReferenceValue         = inputEnd;
+        soDSS.FindProperty("btnRichiestaStorico").objectReferenceValue  = btnStorico;
+        soDSS.FindProperty("testoMedia").objectReferenceValue           = testoMedia;
+        soDSS.FindProperty("testoErroreStandard").objectReferenceValue  = testoErroreStandard;
+        soDSS.FindProperty("testoCampioni").objectReferenceValue        = testoCampioni;
+        soDSS.FindProperty("testoStatoStorico").objectReferenceValue    = testoStatoStorico;
+        soDSS.FindProperty("btnToggleStorico").objectReferenceValue      = btnToggle;
+        soDSS.FindProperty("pannelloSoglie").objectReferenceValue         = pannelloSoglie;
+        soDSS.FindProperty("sliderSogliaIntermedia").objectReferenceValue = sliderInt;
+        soDSS.FindProperty("sliderSogliaLimite").objectReferenceValue     = sliderLim;
+        soDSS.FindProperty("testoValoreIntermedia").objectReferenceValue  = testoValInt;
+        soDSS.FindProperty("testoValoreLimite").objectReferenceValue      = testoValLim;
+        soDSS.FindProperty("btnImpostaSoglie").objectReferenceValue       = btnImpostaSoglie;
+        soDSS.FindProperty("btnToggleSoglie").objectReferenceValue        = btnToggleSoglie;
         soDSS.ApplyModifiedProperties();
 
-        UnityEditor.Events.UnityEventTools.AddPersistentListener(btnSoglie.onClick, dssCtrl.InviaSoglie);
-        UnityEditor.Events.UnityEventTools.AddPersistentListener(btnPoll.onClick,   dssCtrl.PollMetriche);
+        UnityEditor.Events.UnityEventTools.AddPersistentListener(btnToggle.onClick,        dssCtrl.TogglePannelloStorico);
+        UnityEditor.Events.UnityEventTools.AddPersistentListener(btnStorico.onClick,       dssCtrl.RichiestaStorico);
+        UnityEditor.Events.UnityEventTools.AddPersistentListener(btnToggleSoglie.onClick,  dssCtrl.TogglePannelloSoglie);
+        UnityEditor.Events.UnityEventTools.AddPersistentListener(btnImpostaSoglie.onClick, dssCtrl.InviaSoglie);
 
         Selection.activeGameObject = radice;
         SceneView.FrameLastActiveSceneView();
         EditorUtility.SetDirty(radice);
 
-        string configMsg = dtConfig != null
-            ? $"DTConfig assegnato: '{dtConfig.name}'"
-            : "⚠ DTConfig non trovato — assegnalo manualmente in DigitalTwinManager.";
-
+        string cfgMsg = dtConfig != null ? $"DTConfig: '{dtConfig.name}'" : "⚠ DTConfig non trovato.";
         EditorUtility.DisplayDialog("Pannello DSS Creato ✓",
-            $"Pannello generato con OVRRaycaster e OVRInputModule.\n\n{configMsg}", "OK");
+            $"Pannello generato.\n• PUSH: stato_varco, visitatori, visitatori_vr\n• PULL: storico on-demand\n\n{cfgMsg}", "OK");
     }
 
-    // ─── EventSystem OVR ─────────────────────────────────────────────────────
+    // ─── Helpers ─────────────────────────────────────────────────────────────
     private static void GarantisciOVREventSystem()
     {
         EventSystem es = FindObjectOfType<EventSystem>();
         if (es == null)
         {
-            GameObject goES = new GameObject("EventSystem (OVR)");
-            Undo.RegisterCreatedObjectUndo(goES, "Crea OVR EventSystem");
-            goES.AddComponent<EventSystem>();
-            goES.AddComponent<OVRInputModule>();
+            GameObject g = new GameObject("EventSystem (OVR)");
+            Undo.RegisterCreatedObjectUndo(g, "Crea OVR EventSystem");
+            g.AddComponent<EventSystem>();
+            g.AddComponent<OVRInputModule>();
         }
         else
         {
@@ -161,20 +220,18 @@ public class DTDSSPanelBuilder : Editor
     private static DTConfig TrovaDTConfig()
     {
         string[] guids = AssetDatabase.FindAssets("t:DTConfig");
-        if (guids.Length > 0) return AssetDatabase.LoadAssetAtPath<DTConfig>(AssetDatabase.GUIDToAssetPath(guids[0]));
+        if (guids.Length > 0)
+            return AssetDatabase.LoadAssetAtPath<DTConfig>(AssetDatabase.GUIDToAssetPath(guids[0]));
         return null;
     }
 
-    // =========================================================================
-    // HELPERS UI
-    // =========================================================================
-
-    private static GameObject CreaBox(GameObject parent, string nome, Color colore, Vector2 size, Vector2 pos)
+    private static GameObject CreaBox(GameObject parent, string nome,
+        Color colore, Vector2 size, Vector2 pos)
     {
         GameObject go = new GameObject(nome);
         go.transform.SetParent(parent.transform, false);
-        RectTransform rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = size; rt.anchoredPosition = pos;
+        RectTransform r = go.AddComponent<RectTransform>();
+        r.sizeDelta = size; r.anchoredPosition = pos;
         go.AddComponent<Image>().color = colore;
         return go;
     }
@@ -183,159 +240,176 @@ public class DTDSSPanelBuilder : Editor
     {
         GameObject go = new GameObject(nome);
         go.transform.SetParent(parent.transform, false);
-        RectTransform rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(560, 20);
-        rt.anchoredPosition = new Vector2(-10f, y);
-        rt.pivot = new Vector2(0f, 0.5f);
-        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
-        TextMeshProUGUI tmp = go.AddComponent<TextMeshProUGUI>();
-        tmp.text = testo; tmp.fontSize = 9;
-        tmp.color = ColoreAccent; tmp.fontStyle = FontStyles.Bold;
-        tmp.alignment = TextAlignmentOptions.Left;
+        RectTransform r = go.AddComponent<RectTransform>();
+        r.sizeDelta = new Vector2(500, 18);
+        r.anchoredPosition = new Vector2(-10f, y);
+        r.pivot = new Vector2(0f, 0.5f);
+        r.anchorMin = r.anchorMax = new Vector2(0.5f, 0.5f);
+        TextMeshProUGUI t = go.AddComponent<TextMeshProUGUI>();
+        t.text = testo; t.fontSize = 8;
+        t.color = ColoreAccent; t.fontStyle = FontStyles.Bold;
+        t.alignment = TextAlignmentOptions.Left;
     }
 
-    private static TextMeshProUGUI CreaTesto(GameObject parent, string nome, string contenuto,
-        float size, Color colore, Vector2 pos, FontStyles stile = FontStyles.Normal)
+    private static TextMeshProUGUI CreaTesto(GameObject parent, string nome,
+        string contenuto, float size, Color colore, Vector2 pos,
+        FontStyles stile = FontStyles.Normal)
     {
         GameObject go = new GameObject(nome);
         go.transform.SetParent(parent.transform, false);
-        RectTransform rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(520, 40); rt.anchoredPosition = pos;
-        TextMeshProUGUI tmp = go.AddComponent<TextMeshProUGUI>();
-        tmp.text = contenuto; tmp.fontSize = size;
-        tmp.color = colore; tmp.fontStyle = stile;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.enableWordWrapping = false;
-        return tmp;
+        RectTransform r = go.AddComponent<RectTransform>();
+        r.sizeDelta = new Vector2(500, 36); r.anchoredPosition = pos;
+        TextMeshProUGUI t = go.AddComponent<TextMeshProUGUI>();
+        t.text = contenuto; t.fontSize = size; t.color = colore;
+        t.fontStyle = stile; t.alignment = TextAlignmentOptions.Center;
+        t.enableWordWrapping = false;
+        return t;
     }
 
     private static TextMeshProUGUI CreaRigaKV(GameObject parent, string nome,
-        string label, string valore, Vector2 pos)
+        string label, string valore, Vector2 pos, Color coloreValore)
     {
         GameObject riga = new GameObject(nome);
         riga.transform.SetParent(parent.transform, false);
-        RectTransform rtR = riga.AddComponent<RectTransform>();
-        rtR.sizeDelta = new Vector2(540, 28); rtR.anchoredPosition = pos;
+        riga.AddComponent<RectTransform>().sizeDelta        = new Vector2(500, 22);
+        riga.GetComponent<RectTransform>().anchoredPosition = pos;
 
         GameObject goL = new GameObject("Label");
         goL.transform.SetParent(riga.transform, false);
-        RectTransform rtL = goL.AddComponent<RectTransform>();
-        rtL.sizeDelta = new Vector2(320, 28); rtL.anchoredPosition = new Vector2(-100, 0);
+        goL.AddComponent<RectTransform>().sizeDelta        = new Vector2(280, 22);
+        goL.GetComponent<RectTransform>().anchoredPosition = new Vector2(-100, 0);
         TextMeshProUGUI tmpL = goL.AddComponent<TextMeshProUGUI>();
-        tmpL.text = label; tmpL.fontSize = 12; tmpL.color = ColoreTestoLabel;
+        tmpL.text = label; tmpL.fontSize = 11; tmpL.color = ColoreTestoLabel;
         tmpL.alignment = TextAlignmentOptions.Left; tmpL.enableWordWrapping = false;
 
         GameObject goV = new GameObject("Valore");
         goV.transform.SetParent(riga.transform, false);
-        RectTransform rtV = goV.AddComponent<RectTransform>();
-        rtV.sizeDelta = new Vector2(160, 28); rtV.anchoredPosition = new Vector2(190, 0);
+        goV.AddComponent<RectTransform>().sizeDelta        = new Vector2(160, 22);
+        goV.GetComponent<RectTransform>().anchoredPosition = new Vector2(175, 0);
         TextMeshProUGUI tmpV = goV.AddComponent<TextMeshProUGUI>();
-        tmpV.text = valore; tmpV.fontSize = 20; tmpV.color = ColoreTesto;
+        tmpV.text = valore; tmpV.fontSize = 17; tmpV.color = coloreValore;
         tmpV.fontStyle = FontStyles.Bold; tmpV.alignment = TextAlignmentOptions.Right;
         tmpV.enableWordWrapping = false;
         return tmpV;
     }
 
-    // ─── Slider orizzontale corretto ──────────────────────────────────────────
-    private static Slider CreaSlider(GameObject parent, string nome,
-        float min, float max, float value, Color coloreRiempimento, Vector2 pos, float larghezza)
+    private static TMP_InputField CreaInputField(GameObject parent, string nome,
+        string placeholder, Vector2 pos)
     {
-        // Contenitore Slider
+        GameObject go = CreaBox(parent, nome, ColoreInput, new Vector2(460, 34), pos);
+        TMP_InputField input = go.AddComponent<TMP_InputField>();
+
+        // Text area
+        GameObject textArea = new GameObject("Text Area");
+        textArea.transform.SetParent(go.transform, false);
+        RectTransform rtTA = textArea.AddComponent<RectTransform>();
+        rtTA.anchorMin = Vector2.zero; rtTA.anchorMax = Vector2.one;
+        rtTA.offsetMin = new Vector2(8, 2); rtTA.offsetMax = new Vector2(-8, -2);
+        textArea.AddComponent<RectMask2D>();
+
+        // Placeholder
+        GameObject goPlaceholder = new GameObject("Placeholder");
+        goPlaceholder.transform.SetParent(textArea.transform, false);
+        RectTransform rtPH = goPlaceholder.AddComponent<RectTransform>();
+        rtPH.anchorMin = Vector2.zero; rtPH.anchorMax = Vector2.one;
+        rtPH.sizeDelta = Vector2.zero;
+        TextMeshProUGUI tmpPH = goPlaceholder.AddComponent<TextMeshProUGUI>();
+        tmpPH.text = placeholder; tmpPH.fontSize = 10;
+        tmpPH.color = new Color(0.5f, 0.55f, 0.65f, 1f);
+        tmpPH.fontStyle = FontStyles.Italic;
+        tmpPH.alignment = TextAlignmentOptions.Left;
+
+        // Text
+        GameObject goText = new GameObject("Text");
+        goText.transform.SetParent(textArea.transform, false);
+        RectTransform rtTX = goText.AddComponent<RectTransform>();
+        rtTX.anchorMin = Vector2.zero; rtTX.anchorMax = Vector2.one;
+        rtTX.sizeDelta = Vector2.zero;
+        TextMeshProUGUI tmpTX = goText.AddComponent<TextMeshProUGUI>();
+        tmpTX.text = ""; tmpTX.fontSize = 11;
+        tmpTX.color = ColoreTesto;
+        tmpTX.alignment = TextAlignmentOptions.Left;
+
+        input.textViewport  = rtTA;
+        input.textComponent = tmpTX;
+        input.placeholder   = tmpPH;
+        input.targetGraphic = go.GetComponent<Image>();
+
+        return input;
+    }
+
+    private static Slider CreaSlider(GameObject parent, string nome,
+        float min, float max, float value, Color fill, Vector2 pos, float larghezza)
+    {
         GameObject goS = new GameObject(nome);
         goS.transform.SetParent(parent.transform, false);
         RectTransform rtS = goS.AddComponent<RectTransform>();
-        rtS.sizeDelta        = new Vector2(larghezza, 20);
-        rtS.anchoredPosition = pos;
+        rtS.sizeDelta = new Vector2(larghezza, 18); rtS.anchoredPosition = pos;
 
         Slider slider = goS.AddComponent<Slider>();
-        slider.direction    = Slider.Direction.LeftToRight;
-        slider.minValue     = min;
-        slider.maxValue     = max;
-        slider.value        = value;
-        slider.wholeNumbers = true;
+        slider.direction = Slider.Direction.LeftToRight;
+        slider.minValue = min; slider.maxValue = max;
+        slider.value = value; slider.wholeNumbers = true;
 
-        // ── Background (stretch completo) ─────────────────────────────────────
         GameObject bg = new GameObject("Background");
         bg.transform.SetParent(goS.transform, false);
         RectTransform rtBG = bg.AddComponent<RectTransform>();
-        rtBG.anchorMin       = Vector2.zero;
-        rtBG.anchorMax       = Vector2.one;
-        rtBG.sizeDelta       = Vector2.zero;
-        rtBG.anchoredPosition= Vector2.zero;
-        Image imgBG = bg.AddComponent<Image>();
-        imgBG.color = new Color(0.08f, 0.10f, 0.16f, 1f);
+        rtBG.anchorMin = Vector2.zero; rtBG.anchorMax = Vector2.one;
+        rtBG.sizeDelta = Vector2.zero;
+        bg.AddComponent<Image>().color = new Color(0.08f, 0.10f, 0.16f, 1f);
 
-        // ── Fill Area ─────────────────────────────────────────────────────────
-        GameObject fillArea = new GameObject("Fill Area");
-        fillArea.transform.SetParent(goS.transform, false);
-        RectTransform rtFA = fillArea.AddComponent<RectTransform>();
-        rtFA.anchorMin        = new Vector2(0f, 0.25f);
-        rtFA.anchorMax        = new Vector2(1f, 0.75f);
-        rtFA.offsetMin        = new Vector2(5f, 0f);
-        rtFA.offsetMax        = new Vector2(-5f, 0f);
+        GameObject fa = new GameObject("Fill Area");
+        fa.transform.SetParent(goS.transform, false);
+        RectTransform rtFA = fa.AddComponent<RectTransform>();
+        rtFA.anchorMin = new Vector2(0f, 0.25f); rtFA.anchorMax = new Vector2(1f, 0.75f);
+        rtFA.offsetMin = new Vector2(5f, 0f); rtFA.offsetMax = new Vector2(-5f, 0f);
 
-        // ── Fill ──────────────────────────────────────────────────────────────
-        GameObject fill = new GameObject("Fill");
-        fill.transform.SetParent(fillArea.transform, false);
-        RectTransform rtFill = fill.AddComponent<RectTransform>();
-        rtFill.anchorMin        = new Vector2(0f, 0f);
-        rtFill.anchorMax        = new Vector2(0f, 1f);  // Unity Slider aggiorna anchorMax.x automaticamente
-        rtFill.sizeDelta        = new Vector2(0f, 0f);
-        rtFill.pivot            = new Vector2(0f, 0.5f);
-        Image imgFill = fill.AddComponent<Image>();
-        imgFill.color = coloreRiempimento;
+        GameObject fillGO = new GameObject("Fill");
+        fillGO.transform.SetParent(fa.transform, false);
+        RectTransform rtFill = fillGO.AddComponent<RectTransform>();
+        rtFill.anchorMin = new Vector2(0f, 0f); rtFill.anchorMax = new Vector2(0f, 1f);
+        rtFill.sizeDelta = Vector2.zero; rtFill.pivot = new Vector2(0f, 0.5f);
+        fillGO.AddComponent<Image>().color = fill;
 
-        // ── Handle Slide Area ─────────────────────────────────────────────────
-        GameObject handleArea = new GameObject("Handle Slide Area");
-        handleArea.transform.SetParent(goS.transform, false);
-        RectTransform rtHA = handleArea.AddComponent<RectTransform>();
-        rtHA.anchorMin        = new Vector2(0f, 0f);
-        rtHA.anchorMax        = new Vector2(1f, 1f);
-        rtHA.offsetMin        = new Vector2(10f, 0f);
-        rtHA.offsetMax        = new Vector2(-10f, 0f);
+        GameObject ha = new GameObject("Handle Slide Area");
+        ha.transform.SetParent(goS.transform, false);
+        RectTransform rtHA = ha.AddComponent<RectTransform>();
+        rtHA.anchorMin = Vector2.zero; rtHA.anchorMax = Vector2.one;
+        rtHA.offsetMin = new Vector2(10f, 0f); rtHA.offsetMax = new Vector2(-10f, 0f);
 
-        // ── Handle ────────────────────────────────────────────────────────────
         GameObject handle = new GameObject("Handle");
-        handle.transform.SetParent(handleArea.transform, false);
+        handle.transform.SetParent(ha.transform, false);
         RectTransform rtH = handle.AddComponent<RectTransform>();
-        rtH.sizeDelta        = new Vector2(24f, 24f);
-        rtH.anchoredPosition = Vector2.zero;
-        rtH.anchorMin        = new Vector2(0f, 0.5f);
-        rtH.anchorMax        = new Vector2(0f, 0.5f);
-        rtH.pivot            = new Vector2(0.5f, 0.5f);
-        Image imgHandle = handle.AddComponent<Image>();
-        imgHandle.color = coloreRiempimento;
+        rtH.sizeDelta = new Vector2(24f, 24f);
+        rtH.anchorMin = new Vector2(0f, 0.5f); rtH.anchorMax = new Vector2(0f, 0.5f);
+        rtH.pivot = new Vector2(0.5f, 0.5f);
+        Image imgH = handle.AddComponent<Image>();
+        imgH.color = fill;
 
-        // Collega i riferimenti al Slider
-        slider.fillRect      = rtFill;
-        slider.handleRect    = rtH;
-        slider.targetGraphic = imgHandle;
+        slider.fillRect = rtFill;
+        slider.handleRect = rtH;
+        slider.targetGraphic = imgH;
 
-        // Feedback visivo hover/press
         ColorBlock cb = slider.colors;
-        cb.normalColor      = Color.white;
-        cb.highlightedColor = coloreRiempimento * 1.4f;
-        cb.pressedColor     = coloreRiempimento * 0.7f;
-        cb.fadeDuration     = 0.08f;
+        cb.normalColor = Color.white;
+        cb.highlightedColor = fill * 1.4f;
+        cb.pressedColor = fill * 0.7f;
+        cb.fadeDuration = 0.08f;
         slider.colors = cb;
-
         return slider;
     }
 
-    private static Button CreaBottone(GameObject parent, string nome, string etichetta,
-        Color colore, Vector2 pos, Vector2 size)
+    private static Button CreaBottone(GameObject parent, string nome,
+        string etichetta, Color colore, Vector2 pos, Vector2 size)
     {
         GameObject go = CreaBox(parent, nome, colore, size, pos);
         Button btn = go.AddComponent<Button>();
         btn.targetGraphic = go.GetComponent<Image>();
         ColorBlock cb = btn.colors;
-        cb.normalColor      = colore;
-        cb.highlightedColor = colore * 1.35f;
-        cb.pressedColor     = colore * 0.65f;
-        cb.selectedColor    = colore * 1.15f;
-        cb.fadeDuration     = 0.08f;
+        cb.normalColor = colore; cb.highlightedColor = colore * 1.35f;
+        cb.pressedColor = colore * 0.65f; cb.fadeDuration = 0.08f;
         btn.colors = cb;
-        CreaTesto(go, "Label", etichetta, 13, Color.white, Vector2.zero, FontStyles.Bold);
+        CreaTesto(go, "Label", etichetta, 12, Color.white, Vector2.zero, FontStyles.Bold);
         return btn;
     }
 }
