@@ -2,22 +2,17 @@
 // DTGuestController.cs — Controller VR Guest (Meta Quest 3)
 // My_Scripts/DigitalTwin/DTGuestController.cs
 //
-// UTILIZZO IN SCENA (GAP1.unity, GAP2.unity):
-//   1. Aggiungi a un GameObject nella scena (es. "VarcoManager")
-//   2. Assegna DTConfig nel campo "Dt Config"
-//   3. Assegna il riferimento all'oggetto Semaforo 3D (opzionale)
-//   4. Questo script invia automaticamente gli eventi VR al server
-//      e aggiorna il semaforo 3D in base allo stato ricevuto
-//
-// RESPONSABILITÀ:
-//   • Invia evento ingresso VR quando la scena si carica (OnEnable)
-//   • Invia evento uscita VR quando la scena si scarica (OnDisable)
-//   • Riceve stato_varco e lo propaga al DTSemaforoVisual
-//   • Espone evento C# OnStatoVarcoChanged per altri componenti della scena
+// Gestisce il pannello UI nella scena VR_GUEST_Home:
+//   • Mostra "VARCO PRINCIPALE — {stato_varco}" aggiornato dal server via PUSH
+//   • Al click del button invia DTEventoVRGuestMsg (ingresso/uscita alternati)
+//   • Aggiorna testo, colore e label azione ad ogni cambio di stato
 // =============================================================================
 
 using System;
+using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
+using TMPro;
 using DigitalTwin;
 
 public class DTGuestController : MonoBehaviour
@@ -26,167 +21,205 @@ public class DTGuestController : MonoBehaviour
     [Header("Configurazione Digital Twin")]
     [SerializeField] private DTConfig dtConfig;
 
+    [Header("Pannello Varco")]
+    [SerializeField] private Button          btnVarco;
+    [SerializeField] private TextMeshProUGUI testoStatoVarco;   // "VARCO PRINCIPALE\n✓ OPERATIVO"
+    [SerializeField] private TextMeshProUGUI testoAzione;       // "Tocca per accedere" / "Tocca per uscire"
+    [SerializeField] private Image           sfondoBottone;     // colore feedback
+
     [Header("Semaforo 3D (opzionale)")]
-    [Tooltip("Assegna il GameObject del semaforo 3D nella scena")]
     [SerializeField] private DTSemaforoVisual semaforoVisual;
+
+    [Header("Colori")]
+    [SerializeField] private Color coloreOperativo   = new Color(0.15f, 0.60f, 0.25f, 1f);
+    [SerializeField] private Color coloreFuoriServ   = new Color(0.70f, 0.15f, 0.15f, 1f);
+    [SerializeField] private Color coloreDentro      = new Color(0.20f, 0.45f, 0.75f, 1f);
 
     [Header("Debug")]
     [SerializeField] private bool logEventiVR = true;
 
-    // ─── Stato ────────────────────────────────────────────────────────────────
-    private string _statoVarcoCorrente = DTStati.VARCO_OK;
-    private bool _sessioneAttiva = false;
+    // ─── Stato interno ────────────────────────────────────────────────────────
+    private string _statoVarco   = DTStati.VARCO_OK;
+    private bool   _sessione     = false;   // true = utente "dentro" VR
 
-    /// <summary>
-    /// Stato varco corrente ricevuto dal Digital Twin Server.
-    /// "ok" = varco operativo | "Errore di comunicazione EchoBean" = fuori servizio
-    /// </summary>
-    public string StatoVarco => _statoVarcoCorrente;
-    public bool IsVarcoOperativo => _statoVarcoCorrente == DTStati.VARCO_OK;
+    public string StatoVarco        => _statoVarco;
+    public bool   IsVarcoOperativo  => _statoVarco == DTStati.VARCO_OK;
+    public bool   IsSessioneAttiva  => _sessione;
 
-    // ─── Evento per altri componenti della scena ──────────────────────────────
-    /// <summary>
-    /// Invocato ogni volta che lo stato varco cambia.
-    /// Altri MonoBehaviour possono iscriversi per reagire al cambio di stato.
-    /// </summary>
     public event Action<string> OnStatoVarcoChanged;
 
     // ─── Unity Lifecycle ──────────────────────────────────────────────────────
+
+    private void Start()
+    {
+        StartCoroutine(OnVarcoButtonClickedSimulator());
+        
+    }
     private void OnEnable()
     {
+        btnVarco?.onClick.AddListener(OnVarcoButtonClicked);
+
+        AggiornaPannello();   // stato iniziale
+
         if (DTWebSocketClient.Instance != null)
         {
             DTWebSocketClient.Instance.OnStatoVarcoReceived += HandleStatoVarco;
-            DTWebSocketClient.Instance.OnConnected += HandleConnected;
-
-            // Se già connesso invia subito, altrimenti aspetta HandleConnected
+            DTWebSocketClient.Instance.OnConnected          += HandleConnected;
             if (DTWebSocketClient.Instance.IsConnected)
                 InviaEventoVR(ingresso: true);
-            // else: HandleConnected() lo farà appena la connessione è pronta
         }
         else
         {
-            // DTWebSocketClient non ancora in scena — riprova al frame successivo
             StartCoroutine(AttesaClient());
         }
     }
 
-    private System.Collections.IEnumerator AttesaClient()
+    private void OnDisable()
     {
-        // Aspetta finché il Singleton è disponibile (max 10 secondi)
+        btnVarco?.onClick.RemoveListener(OnVarcoButtonClicked);
+
+        if (_sessione)
+            InviaEventoVR(ingresso: false);
+
+        if (DTWebSocketClient.Instance != null)
+        {
+            DTWebSocketClient.Instance.OnStatoVarcoReceived -= HandleStatoVarco;
+            DTWebSocketClient.Instance.OnConnected          -= HandleConnected;
+        }
+    }
+
+    private IEnumerator AttesaClient()
+    {
         float timeout = 10f;
         while (DTWebSocketClient.Instance == null && timeout > 0f)
-        {
-            timeout -= Time.deltaTime;
-            yield return null;
-        }
+        { timeout -= Time.deltaTime; yield return null; }
 
         if (DTWebSocketClient.Instance == null)
         {
-            Debug.LogError("[DT Guest] DTWebSocketClient non trovato in scena dopo 10s. " +
-                           "Assicurati che sia presente nella Home scene.");
+            Debug.LogError("[DT Guest] DTWebSocketClient non trovato dopo 10s.");
             yield break;
         }
 
         DTWebSocketClient.Instance.OnStatoVarcoReceived += HandleStatoVarco;
-        DTWebSocketClient.Instance.OnConnected += HandleConnected;
+        DTWebSocketClient.Instance.OnConnected          += HandleConnected;
 
         if (DTWebSocketClient.Instance.IsConnected)
             InviaEventoVR(ingresso: true);
     }
 
-    private void OnDisable()
-    {
-        // Invia evento uscita VR prima di disiscriversi
-        if (_sessioneAttiva)
-        {
-            InviaEventoVR(ingresso: false);
-        }
-
-        if (DTWebSocketClient.Instance != null)
-        {
-            DTWebSocketClient.Instance.OnStatoVarcoReceived -= HandleStatoVarco;
-            DTWebSocketClient.Instance.OnConnected -= HandleConnected;
-        }
-    }
-
-    // ─── Handlers ─────────────────────────────────────────────────────────────
-
+    // ─── Handlers server ──────────────────────────────────────────────────────
     private void HandleConnected()
     {
-        // Alla riconnessione, reinvia l'evento ingresso VR
         if (gameObject.activeInHierarchy)
-        {
             InviaEventoVR(ingresso: true);
+    }
+
+    private void HandleStatoVarco(string stato)
+    {
+        if (_statoVarco == stato) return;
+        _statoVarco = stato;
+
+        if (logEventiVR)
+            Debug.Log($"[DT Guest] stato_varco → {stato}");
+
+        semaforoVisual?.AggiornaDaStatoVarco(stato);
+        OnStatoVarcoChanged?.Invoke(stato);
+        AggiornaPannello();
+    }
+
+    // ─── Click button ─────────────────────────────────────────────────────────
+    /// <summary>
+    /// Chiamato dal button "VARCO PRINCIPALE".
+    /// Alterna ingresso/uscita VR e comunica l'interazione al server.
+    /// </summary>
+    public void OnVarcoButtonClicked()
+    {
+        bool nuovoStato = !_sessione;
+        InviaEventoVR(ingresso: nuovoStato);
+        AggiornaPannello();
+
+        if (logEventiVR)
+            Debug.Log($"[DT Guest] Button cliccato → {(nuovoStato ? "INGRESSO" : "USCITA")} VR");
+    }
+    private IEnumerator OnVarcoButtonClickedSimulator()
+    {
+        while(true)
+        {
+            yield return new WaitForSeconds(5f);
+            OnVarcoButtonClicked();
+            Debug.Log("[DT Guest] Simulazione click button dopo 5s.");
         }
     }
 
-    private void HandleStatoVarco(string statoVarco)
+    // ─── Aggiornamento UI ─────────────────────────────────────────────────────
+    private void AggiornaPannello()
     {
-        // Esegue sul thread principale Unity (garantito da DispatchMessageQueue)
-        if (_statoVarcoCorrente == statoVarco) return;  // Nessun cambiamento
+        bool operativo = _statoVarco == DTStati.VARCO_OK;
 
-        _statoVarcoCorrente = statoVarco;
+        // Testo principale: "VARCO PRINCIPALE\n✓ OPERATIVO"
+        if (testoStatoVarco != null)
+        {
+            string icona  = operativo ? "✓" : "⚠";
+            string stato  = operativo ? "OPERATIVO" : "FUORI SERVIZIO";
+            testoStatoVarco.text  = $"VARCO PRINCIPALE\n{icona} {stato}";
+            testoStatoVarco.color = operativo ? Color.white : new Color(1f, 0.85f, 0.3f);
+        }
 
-        if (logEventiVR)
-            Debug.Log($"[DT Guest] stato_varco aggiornato: {statoVarco}");
+        // Label azione: guida contestuale
+        if (testoAzione != null)
+        {
+            if (!operativo)
+                testoAzione.text = "Varco temporaneamente non disponibile";
+            else if (_sessione)
+                testoAzione.text = "Tocca per uscire dall'area";
+            else
+                testoAzione.text = "Tocca per accedere all'area";
+        }
 
-        // Aggiorna semaforo visuale 3D
-        semaforoVisual?.AggiornaDaStatoVarco(statoVarco);
+        // Colore sfondo button
+        if (sfondoBottone != null)
+        {
+            if (!operativo)
+                sfondoBottone.color = coloreFuoriServ;
+            else if (_sessione)
+                sfondoBottone.color = coloreDentro;
+            else
+                sfondoBottone.color = coloreOperativo;
+        }
 
-        // Notifica altri componenti della scena
-        OnStatoVarcoChanged?.Invoke(statoVarco);
+        // Interattività: disabilita se varco fuori servizio
+        if (btnVarco != null)
+            btnVarco.interactable = operativo;
     }
 
-    // ─── Invio eventi VR ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Invia manualmente un evento di ingresso o uscita VR al server.
-    /// Chiamato automaticamente da OnEnable/OnDisable, ma può essere invocato
-    /// anche da altri script (es. TriggerZone, OVRManager events).
-    /// </summary>
+    // ─── Invio evento VR ──────────────────────────────────────────────────────
     public void InviaEventoVR(bool ingresso)
     {
         if (dtConfig == null)
-        {
-            Debug.LogWarning("[DT Guest] DTConfig non assegnato.");
-            return;
-        }
+        { Debug.LogWarning("[DT Guest] DTConfig non assegnato."); return; }
 
         if (DTWebSocketClient.Instance == null || !DTWebSocketClient.Instance.IsConnected)
         {
             if (logEventiVR)
-                Debug.LogWarning("[DT Guest] InviaEventoVR: non connesso al server.");
+                Debug.LogWarning("[DT Guest] Non connesso al server.");
             return;
         }
 
-        _sessioneAttiva = ingresso;
+        _sessione = ingresso;
 
-        var msg = new DTEventoVRGuestMsg
+        DTWebSocketClient.Instance.SendJson(new DTEventoVRGuestMsg
         {
-            ingresso_vr         = ingresso,
-            uscita_vr           = !ingresso,
-            datetimestamp_vr    = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-            id_visore           = dtConfig.idVisore
-        };
-
-        DTWebSocketClient.Instance.SendJson(msg);
+            ingresso_vr      = ingresso,
+            uscita_vr        = !ingresso,
+            datetimestamp_vr = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+            id_visore        = dtConfig.idVisore
+        });
 
         if (logEventiVR)
-            Debug.Log($"[DT Guest] Evento VR inviato: {(ingresso ? "INGRESSO" : "USCITA")} | visore={dtConfig.idVisore}");
+            Debug.Log($"[DT Guest] → Server: {(ingresso ? "INGRESSO" : "USCITA")} VR | {dtConfig.idVisore}");
     }
 
-    // ─── API pubblica per altri script ────────────────────────────────────────
-
-    /// <summary>
-    /// Chiamata da OVRManager o altri trigger quando il visore viene indossato.
-    /// Equivalente a InviaEventoVR(ingresso: true).
-    /// </summary>
+    // ─── API pubblica ─────────────────────────────────────────────────────────
     public void OnVisoreIndossato() => InviaEventoVR(ingresso: true);
-
-    /// <summary>
-    /// Chiamata da OVRManager o altri trigger quando il visore viene rimosso.
-    /// Equivalente a InviaEventoVR(ingresso: false).
-    /// </summary>
-    public void OnVisoreRimosso() => InviaEventoVR(ingresso: false);
+    public void OnVisoreRimosso()   => InviaEventoVR(ingresso: false);
 }

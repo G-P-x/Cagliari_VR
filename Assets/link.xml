@@ -1,0 +1,27 @@
+<!--
+    link.xml — Preserves assemblies used by DTWebSocketClient.cs
+    Place in: Assets/link.xml
+
+    Prevents IL2CPP managed stripping from removing:
+      - System.Net.Sockets  (TcpClient, NetworkStream)
+      - System.Net          (WebSocket handshake)
+      - System.Threading    (Thread, CancellationToken)
+      - System.Collections.Concurrent (ConcurrentQueue)
+      - System.IO           (StreamWriter for M1c/M3 CSV logging)
+-->
+<linker>
+  <assembly fullname="System" preserve="all"/>
+  <assembly fullname="System.Core" preserve="all"/>
+  <assembly fullname="System.Net.Sockets" preserve="all"/>
+  <assembly fullname="System.Threading" preserve="all"/>
+  <assembly fullname="System.Threading.Thread" preserve="all"/>
+  <assembly fullname="System.Collections.Concurrent" preserve="all"/>
+  <assembly fullname="System.IO" preserve="all"/>
+  <assembly fullname="Assembly-CSharp" preserve="all"/>
+  <assembly fullname="Oculus.Interaction" preserve="all"/>
+  <assembly fullname="Oculus.Interaction.OVR" preserve="all"/>
+  <assembly fullname="OculusXRPlugin" preserve="all"/>
+  <assembly fullname="Unity.XR.Oculus" preserve="all"/>
+  <assembly fullname="Unity.XR.OpenXR" preserve="all"/>
+</linker>
+

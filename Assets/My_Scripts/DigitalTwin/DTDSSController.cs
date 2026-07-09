@@ -87,11 +87,7 @@ public class DTDSSController : MonoBehaviour
     // ─── Update — polling diretto (no eventi) ─────────────────────────────────
     private void Update()
     {
-        if (DTWebSocketClient.Instance == null)
-        {
-            Debug.LogError("[DT DSS] DTWebSocketClient non trovato."); 
-            return;
-        }
+        if (DTWebSocketClient.Instance == null) return;
 
         // Aggiorna stato varco se cambiato
         string statoVarco = DTWebSocketClient.Instance.LastStatoVarco;
@@ -122,8 +118,35 @@ public class DTDSSController : MonoBehaviour
         }
     }
 
+    // ─── Logging M1c ──────────────────────────────────────────────────────────
+    private static int   _m1cEventId  = 0;
+    private static bool  _m1cHeaderOk = false;
+
+    private void LogM1c(long serverTs, long clientTs, float delta)
+    {
+        string path = System.IO.Path.Combine(
+            Application.persistentDataPath, "latency_m1c.csv");
+        bool exists = System.IO.File.Exists(path);
+        using var w = new System.IO.StreamWriter(path, append: true);
+        if (!exists || !_m1cHeaderOk)
+        {
+            w.WriteLine("event_id,server_timestamp_ms,unity_received_ms,delta_ms");
+            _m1cHeaderOk = true;
+        }
+        w.WriteLine($"{++_m1cEventId},{serverTs},{clientTs},{delta:F1}");
+    }
+
     private void AggiornaUI(DTMetricheDSSMsg m)
     {
+        // M1c — latenza Server → VR (Unity)
+        if (m.server_timestamp_ms > 0)
+        {
+            long  clientTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            float delta    = clientTs - m.server_timestamp_ms;
+            LogM1c(m.server_timestamp_ms, clientTs, delta);
+            Debug.Log($"[M1c] Latenza Server→VR: {delta:F0}ms");
+        }
+
         AggiornaStatoVarco(m.stato_varco);
         if (testoVisitatori   != null) testoVisitatori.text   = $"{m.visitatori}";
         if (testoVisitatoriVR != null) testoVisitatoriVR.text = $"{m.visitatori_vr}";

@@ -52,10 +52,11 @@ namespace DigitalTwin
     [Serializable]
     public class DTMetricheDSSMsg
     {
-        public string tipo;          // "metriche_dss"
-        public string stato_varco;   // "ok" | "Errore di comunicazione EchoBean"
-        public int    visitatori;    // persone fisicamente dentro ora
-        public int    visitatori_vr; // sessioni visore VR attive
+        public string tipo;                  // "metriche_dss"
+        public string stato_varco;           // "ok" | "Errore di comunicazione EchoBean"
+        public int    visitatori;            // persone fisicamente dentro ora
+        public int    visitatori_vr;         // sessioni visore VR attive
+        public long   server_timestamp_ms;   // epoch UTC ms — usato per M1c
     }
 
     /// <summary>

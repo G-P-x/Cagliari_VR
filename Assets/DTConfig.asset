@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 835ec03fbcf0210478de2f6dba3621d6, type: 3}
   m_Name: DTConfig
   m_EditorClassIdentifier: Assembly-CSharp::DigitalTwin.DTConfig
-  serverHost: localhost
+  serverHost: 10.160.85.208
   serverPort: 8765
   idVisore: AA:BB:CC:DD:EE:FF
   reconnectDelaySeconds: 3
