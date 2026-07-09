@@ -35,7 +35,10 @@ public class MapGapBehaviour : MonoBehaviour
         }
         lessThenMInColor.a = alphaValue; // Set alpha for low access color
         moreThenMaxColor.a = alphaValue; // Set alpha for high access color
-        StartCoroutine(GetScenesInBuild()); // Get the scenes in the build
+        // cache material instance to avoid modifying shared material
+        instanceMaterial = meshRenderer.material;
+        // Fill the scenes set synchronously to avoid race conditions
+        FillScenesInBuild();
         distanceCheckCoroutine = StartCoroutine(CheckDistance());
     }
 
@@ -75,17 +78,13 @@ public class MapGapBehaviour : MonoBehaviour
         // I'm going to check here if the gap scene is in the built scenes.
         // If not, I will change the color of the gap to a light gray to indicate that it is not implemented.
         // change the color of the gap when clicked
-        if (scenesInBuild == null || scenesInBuild.Count == 0)
+        // Ensure comparisons are case-insensitive and culture-invariant
+        if (!scenesInBuild.Contains(gameObject.name.ToUpperInvariant()))
         {
-            Debug.LogWarning("No scenes in build found. Cannot change color on click.");
-            return;
-        }
-        if (!scenesInBuild.Contains(gameObject.name.ToUpper()))
-        {
-            Color originalColor = meshRenderer.material.color; // Store the original color
+            Color originalColor = instanceMaterial.color; // Store the original color
             // If the scene is not in the build, change the color to light gray
             Color lightGray = new Color(0.8f, 0.8f, 0.8f, alphaValue); // Light gray color with alpha
-            meshRenderer.material.color = lightGray;
+            instanceMaterial.color = lightGray;
             StartCoroutine(ResetGapColor(originalColor, lightGray)); // Start the coroutine to reset the color after a delay
             return; // Exit the method since the scene is not implemented
         }
@@ -93,7 +92,7 @@ public class MapGapBehaviour : MonoBehaviour
         {
             Color newColor = Color.white; // Set the new color you want when clicked
             newColor.a = 0.6f; // Set alpha to make it semi-transparent
-            meshRenderer.material.color = newColor;
+            instanceMaterial.color = newColor;
 
             // here I should add the logic to load the scene
         }
@@ -155,7 +154,7 @@ public class MapGapBehaviour : MonoBehaviour
     }
     private IEnumerator ReportPanelInfo(float averageAccess = 0f)
     {
-        yield return new WaitForSeconds(0.1f); // Wait for 1 second before updating the text
+        yield return new WaitForSeconds(0.1f); // Wait briefly before updating the text
         if (gapText != null)
         {
             gapText.text = $"Average accesses: {averageAccess:F2}"; // Set the gap name in the text component with formatted average access
@@ -165,30 +164,38 @@ public class MapGapBehaviour : MonoBehaviour
             Debug.LogWarning("Gap name text component is not assigned.");
         }
     }
-    private IEnumerator GetScenesInBuild()
+    /// <summary>
+    /// Fill the scenesInBuild HashSet synchronously to avoid timing issues.
+    /// </summary>
+    private void FillScenesInBuild()
     {
+        scenesInBuild.Clear();
         int sceneCount = SceneManager.sceneCountInBuildSettings;
         for (int i = 0; i < sceneCount; i++)
         {
             string scenePath = SceneUtility.GetScenePathByBuildIndex(i);
             string sceneName = System.IO.Path.GetFileNameWithoutExtension(scenePath);
-            scenesInBuild.Add(sceneName);
-            yield return null; // Wait for the next frame to avoid freezing the main thread
+            scenesInBuild.Add(sceneName.ToUpperInvariant());
         }
-        yield break;
     }
     private IEnumerator ResetGapColor(Color toRestore, Color newerColor)
     {
-        yield return new WaitForSeconds(1f); // Wait for 2 seconds before resetting the color
-        float t = 0;
-        while(t<1)
+        const float holdBeforeFade = 0.5f; // seconds to hold the newer color
+        const float duration = 0.5f; // fade duration in seconds
+        yield return new WaitForSeconds(holdBeforeFade);
+        float t = 0f;
+        while (t < 1f)
         {
-            meshRenderer.material.color = Color.Lerp(newerColor, toRestore, t);
-            t += 0.1f; // Increment t by 0.1
-            yield return null; // Wait for the next frame
+            instanceMaterial.color = Color.Lerp(newerColor, toRestore, t);
+            t += Time.deltaTime / duration;
+            yield return null;
         }
-        yield break; // Exit the coroutine        
+        instanceMaterial.color = toRestore;
+        yield break; // Exit the coroutine
     }
+
+    // cached material instance to avoid modifying the shared material
+    private Material instanceMaterial;
 }
 
 
